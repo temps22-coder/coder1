@@ -1,5 +1,5 @@
 <?php
-$auth_enabled = true;
+$auth_enabled = false;
 
 $auth_users = [
     'admin' => '$2a$12$eJHdIuo9oMwuLspwxW19pesBYoCBykyN16sBsx8.GXXsFOnRU2ysS',
